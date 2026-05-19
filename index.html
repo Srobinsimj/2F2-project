@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Serverless 2FA Demo</title>
+    <!-- Tailwind CSS for clean UI styling -->
+    <script src="https://jsdelivr.net"></script>
+    <!-- OTP Auth Library to handle TOTP calculation in JS -->
+    <script src="https://cloudflare.com"></script>
+    <!-- QRCode library to render the QR code cleanly -->
+    <script src="https://cloudflare.com"></script>
+</head>
+<body class="bg-gray-100 flex items-center justify-center min-h-screen font-sans">
+
+    <!-- Container wrapper -->
+    <div class="bg-white p-8 rounded-xl shadow-md w-full max-w-md">
+        
+        <!-- STEP 1: REGISTRATION & SIGN UP -->
+        <div id="step-signup" class="block">
+            <h2 class="text-2xl font-bold mb-2 text-gray-800">Create Account</h2>
+            <p class="text-sm text-gray-500 mb-6">Set up your local testing password credentials.</p>
+            <div class="space-y-4">
+                <input type="text" id="reg-username" placeholder="Username" class="w-full p-3 border rounded-lg focus:outline-blue-500">
+                <input type="password" id="reg-password" placeholder="Password" class="w-full p-3 border rounded-lg focus:outline-blue-500">
+                <button onclick="handleSignup()" class="w-full bg-green-600 text-white p-3 rounded-lg font-medium hover:bg-green-700 transition">Register & Setup 2FA</button>
+            </div>
+        </div>
+
+        <!-- STEP 2: SCAN QR CODE SETUP -->
+        <div id="step-setup" class="hidden text-center">
+            <h2 class="text-2xl font-bold mb-2 text-gray-800">Secure Your Account</h2>
+            <p class="text-sm text-gray-600 mb-4">Scan this barcode using Google Authenticator or Authy.</p>
+            <div id="qrcode-container" class="flex justify-center my-4 p-4 bg-gray-50 rounded-lg inline-block mx-auto"></div>
+            <p class="text-xs text-gray-400 mb-4 font-mono">Secret: <span id="text-secret"></span></p>
+            <input type="text" id="setup-token" placeholder="000000" maxlength="6" class="w-full p-3 border text-center text-xl tracking-widest rounded-lg mb-4 focus:outline-blue-500">
+            <button onclick="handleVerifySetup()" class="w-full bg-blue-600 text-white p-3 rounded-lg font-medium hover:bg-blue-700 transition">Verify & Active 2FA</button>
+        </div>
+
+        <!-- STEP 3: USER LOGIN -->
+        <div id="step-login" class="hidden">
+            <h2 class="text-2xl font-bold mb-2 text-gray-800">Account Log In</h2>
+            <p class="text-sm text-gray-500 mb-6 font-medium text-amber-600">Simulating a fresh login challenge.</p>
+            <div class="space-y-4">
+                <input type="text" id="login-username" placeholder="Username" class="w-full p-3 border rounded-lg focus:outline-blue-500">
+                <input type="password" id="login-password" placeholder="Password" class="w-full p-3 border rounded-lg focus:outline-blue-500">
+                <button onclick="handleLogin()" class="w-full bg-blue-600 text-white p-3 rounded-lg font-medium hover:bg-blue-700 transition">Continue</button>
+            </div>
+        </div>
+
+        <!-- STEP 4: 2FA VERIFICATION PROMPT -->
+        <div id="step-challenge" class="hidden text-center">
+            <h2 class="text-2xl font-bold mb-2 text-gray-800">2-Factor Validation</h2>
+            <p class="text-sm text-gray-600 mb-6">Enter the current 6-digit rolling code from your smartphone app.</p>
+            <input type="text" id="challenge-token" placeholder="000000" maxlength="6" class="w-full p-3 border text-center text-2xl tracking-widest rounded-lg mb-4 focus:outline-blue-500">
+            <button onclick="handleVerifyChallenge()" class="w-full bg-blue-600 text-white p-3 rounded-lg font-medium hover:bg-blue-700 transition">Submit Token</button>
+        </div>
+
+        <!-- STEP 5: PROTECTED USER DASHBOARD -->
+        <div id="step-dashboard" class="hidden text-center">
+            <div class="w-16 h-16 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto mb-4 text-3xl">✓</div>
+            <h2 class="text-2xl font-bold text-gray-800 mb-1">Access Granted!</h2>
+            <p class="text-sm text-gray-500 mb-4">Welcome back, <span id="dash-username" class="font-bold text-gray-700"></span></p>
+            <span class="inline-block bg-green-100 text-green-800 text-xs px-3 py-1 rounded-full font-semibold mb-6">2FA Authenticated</span>
+            <button onclick="handleLogout()" class="w-full bg-gray-200 text-gray-700 p-3 rounded-lg font-medium hover:bg-gray-300 transition">Log Out Securely</button>
+        </div>
+
+    </div>
+
+    <!-- JavaScript Client Engine Logic -->
+    <script>
+        // Fake Local Storage Data Store Mockup 
+        let tempUserStore = null; 
+        let currentSecret = null;
+
+        // Visual view switcher function
+        function showStep(stepId) {
+            ['step-signup', 'step-setup', 'step-login', 'step-challenge', 'step-dashboard'].forEach(id => {
+                document.getElementById(id).style.display = (id === stepId) ? 'block' : 'none';
+            });
+        }
+
+        // Action 1: Handle User Registration
+        function handleSignup() {
+            const user = document.getElementById('reg-username').value.trim();
+            const pass = document.getElementById('reg-password').value;
+
+            if(!user || !pass) return alert("Please fill in all layout field options.");
+
+            // Generate a secure Base32 random key utilizing OTPAuth Engine library natively
+            const secretObj = new OTPAuth.Secret({ size: 20 });
+            currentSecret = secretObj.base32;
+
+            tempUserStore = { username: user, password: pass, secret: currentSecret };
+
+            // Clear old QR code elements if any
+            document.getElementById('qrcode-container').innerHTML = "";
+
+            // Create Authenticator standard dynamic setup link format string
+            const totpUri = new OTPAuth.TOTP({
+                issuer: 'GitHubStatic2FA',
+                label: user,
+                algorithm: 'SHA1',
+                digits: 6,
+                period: 30,
+                secret: secretObj
+            }).toString();
+
+            // Render visible UI layout fields and build custom verification image
+            document.getElementById('text-secret').innerText = currentSecret;
+            new QRCode(document.getElementById('qrcode-container'), {
+                text: totpUri,
+                width: 180,
+                height: 180
+            });
+
+            showStep('step-setup');
+        }
+
+        // Action 2: Verify Initial Scanner Setup
+        function handleVerifySetup() {
+            const tokenInput = document.getElementById('setup-token').value.trim();
+            
+            let totp = new OTPAuth.TOTP({
+                secret: OTPAuth.Secret.fromBase32(currentSecret),
+                digits: 6,
+                period: 30
+            });
+
+            // Validate code matches the active sliding timeframe
+            let delta = totp.validate({ token: tokenInput, window: 1 });
+
+            if (delta !== null) {
+                alert("2FA configured successfully!");
+                showStep('step-login');
+            } else {
+                alert("Invalid verification code token. Please check your smartphone time settings.");
+            }
+        }
+
+        // Action 3: Handle Regular Login Credential Validation
+        function handleLogin() {
+            const user = document.getElementById('login-username').value.trim();
+            const pass = document.getElementById('login-password').value;
+
+            if (tempUserStore && tempUserStore.username === user && tempUserStore.password === pass) {
+                showStep('step-challenge');
+            } else {
+                alert("Invalid configuration credentials. Try again.");
+            }
+        }
+
+        // Action 4: Verify 2FA Verification Login Token Request
+        function handleVerifyChallenge() {
+            const tokenInput = document.getElementById('challenge-token').value.trim();
+
+            let totp = new OTPAuth.TOTP({
+                secret: OTPAuth.Secret.fromBase32(tempUserStore.secret),
+                digits: 6,
+                period: 30
+            });
+
+            let delta = totp.validate({ token: tokenInput, window: 1 });
+
+            if (delta !== null) {
+                document.getElementById('dash-username').innerText = tempUserStore.username;
+                showStep('step-dashboard');
+            } else {
+                alert("Incorrect 2FA Security Token.");
+            }
+        }
+
+        // Action 5: Sign out reset
+        function handleLogout() {
+            document.getElementById('login-username').value = "";
+            document.getElementById('login-password').value = "";
+            document.getElementById('challenge-token').value = "";
+            document.getElementById('setup-token').value = "";
+            showStep('step-login');
+        }
+    </script>
+</body>
+</html>
