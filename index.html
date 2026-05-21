@@ -1,183 +1,1212 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Serverless 2FA Demo</title>
-    <!-- Tailwind CSS for clean UI styling -->
-    <script src="https://jsdelivr.net"></script>
-    <!-- OTP Auth Library to handle TOTP calculation in JS -->
-    <script src="https://cloudflare.com"></script>
-    <!-- QRCode library to render the QR code cleanly -->
-    <script src="https://cloudflare.com"></script>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>SecureAuth — Two-Factor Authentication System</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Syne:wght@400;600;800&display=swap" rel="stylesheet"/>
+<style>
+  :root {
+    --bg: #06080f;
+    --surface: #0d1117;
+    --surface2: #161b24;
+    --border: #1e2735;
+    --accent: #00d4ff;
+    --accent2: #00ff94;
+    --danger: #ff3d5a;
+    --warn: #ffb020;
+    --text: #e2e8f0;
+    --muted: #64748b;
+    --mono: 'JetBrains Mono', monospace;
+    --sans: 'Syne', sans-serif;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: var(--sans);
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow-x: hidden;
+    position: relative;
+  }
+
+  /* Animated grid background */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(0,212,255,0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(0,212,255,0.03) 1px, transparent 1px);
+    background-size: 40px 40px;
+    animation: gridDrift 20s linear infinite;
+    pointer-events: none;
+  }
+
+  body::after {
+    content: '';
+    position: fixed;
+    top: -50%;
+    left: -50%;
+    width: 200%;
+    height: 200%;
+    background: radial-gradient(ellipse at 30% 20%, rgba(0,212,255,0.06) 0%, transparent 50%),
+                radial-gradient(ellipse at 70% 80%, rgba(0,255,148,0.04) 0%, transparent 50%);
+    pointer-events: none;
+  }
+
+  @keyframes gridDrift {
+    0% { transform: translateY(0); }
+    100% { transform: translateY(40px); }
+  }
+
+  /* ===================== LAYOUT ===================== */
+  .app {
+    position: relative;
+    z-index: 10;
+    width: 100%;
+    max-width: 480px;
+    padding: 20px;
+  }
+
+  .logo {
+    text-align: center;
+    margin-bottom: 32px;
+  }
+
+  .logo-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 56px;
+    height: 56px;
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    border-radius: 16px;
+    margin-bottom: 12px;
+    font-size: 24px;
+    box-shadow: 0 0 40px rgba(0,212,255,0.3);
+  }
+
+  .logo h1 {
+    font-size: 22px;
+    font-weight: 800;
+    letter-spacing: -0.5px;
+  }
+
+  .logo span { color: var(--accent); }
+
+  .logo p {
+    font-size: 12px;
+    color: var(--muted);
+    font-family: var(--mono);
+    margin-top: 4px;
+  }
+
+  /* ===================== CARD ===================== */
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    padding: 36px;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 2px;
+    background: linear-gradient(90deg, transparent, var(--accent), var(--accent2), transparent);
+  }
+
+  .step-indicator {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 28px;
+    justify-content: center;
+  }
+
+  .step-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: var(--border);
+    transition: all 0.4s ease;
+  }
+
+  .step-dot.active {
+    background: var(--accent);
+    box-shadow: 0 0 12px var(--accent);
+    width: 24px;
+    border-radius: 4px;
+  }
+
+  .step-dot.done { background: var(--accent2); }
+
+  /* ===================== SCREENS ===================== */
+  .screen { display: none; }
+  .screen.active { display: block; animation: fadeUp 0.4s ease; }
+
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(16px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  .screen-title {
+    font-size: 20px;
+    font-weight: 800;
+    margin-bottom: 6px;
+  }
+
+  .screen-sub {
+    font-size: 13px;
+    color: var(--muted);
+    margin-bottom: 24px;
+    line-height: 1.6;
+    font-family: var(--mono);
+  }
+
+  /* ===================== FORM ELEMENTS ===================== */
+  .field { margin-bottom: 18px; }
+
+  label {
+    display: block;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 8px;
+    font-family: var(--mono);
+  }
+
+  input[type=text], input[type=password], input[type=email] {
+    width: 100%;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 13px 16px;
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 14px;
+    transition: all 0.2s;
+    outline: none;
+  }
+
+  input:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(0,212,255,0.1);
+  }
+
+  input.error {
+    border-color: var(--danger);
+    box-shadow: 0 0 0 3px rgba(255,61,90,0.1);
+    animation: shake 0.3s ease;
+  }
+
+  @keyframes shake {
+    0%,100% { transform: translateX(0); }
+    25% { transform: translateX(-6px); }
+    75% { transform: translateX(6px); }
+  }
+
+  .password-wrap { position: relative; }
+  .toggle-pw {
+    position: absolute; right: 14px; top: 50%;
+    transform: translateY(-50%);
+    background: none; border: none;
+    color: var(--muted); cursor: pointer;
+    font-size: 16px;
+    padding: 0;
+    transition: color 0.2s;
+  }
+  .toggle-pw:hover { color: var(--accent); }
+
+  /* ===================== BUTTONS ===================== */
+  .btn {
+    width: 100%;
+    padding: 14px;
+    border-radius: 10px;
+    border: none;
+    font-family: var(--sans);
+    font-weight: 600;
+    font-size: 14px;
+    cursor: pointer;
+    transition: all 0.2s;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .btn-primary {
+    background: linear-gradient(135deg, var(--accent), #0099cc);
+    color: #000;
+    letter-spacing: 0.5px;
+  }
+
+  .btn-primary:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 8px 24px rgba(0,212,255,0.3);
+  }
+
+  .btn-primary:active { transform: translateY(0); }
+
+  .btn-primary:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    transform: none;
+    box-shadow: none;
+  }
+
+  .btn-secondary {
+    background: var(--surface2);
+    color: var(--text);
+    border: 1px solid var(--border);
+    margin-top: 10px;
+  }
+
+  .btn-secondary:hover { border-color: var(--accent); }
+
+  /* Loading state */
+  .btn.loading .btn-text { opacity: 0; }
+  .btn.loading::after {
+    content: '';
+    position: absolute;
+    width: 18px; height: 18px;
+    border: 2px solid transparent;
+    border-top-color: #000;
+    border-radius: 50%;
+    top: 50%; left: 50%;
+    transform: translate(-50%,-50%);
+    animation: spin 0.6s linear infinite;
+  }
+
+  @keyframes spin { to { transform: translate(-50%,-50%) rotate(360deg); } }
+
+  /* ===================== OTP INPUT ===================== */
+  .otp-grid {
+    display: flex;
+    gap: 10px;
+    justify-content: center;
+    margin-bottom: 24px;
+  }
+
+  .otp-digit {
+    width: 52px; height: 60px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    text-align: center;
+    font-family: var(--mono);
+    font-size: 22px;
+    font-weight: 700;
+    color: var(--accent);
+    outline: none;
+    transition: all 0.2s;
+    caret-color: var(--accent);
+  }
+
+  .otp-digit:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(0,212,255,0.15), 0 0 20px rgba(0,212,255,0.1);
+  }
+
+  .otp-digit.filled { border-color: var(--accent2); }
+  .otp-digit.error-otp {
+    border-color: var(--danger);
+    animation: shake 0.3s ease;
+  }
+
+  /* ===================== TIMER ===================== */
+  .timer-bar-wrap {
+    background: var(--surface2);
+    border-radius: 4px;
+    height: 4px;
+    margin-bottom: 16px;
+    overflow: hidden;
+  }
+
+  .timer-bar {
+    height: 100%;
+    background: linear-gradient(90deg, var(--accent), var(--accent2));
+    border-radius: 4px;
+    transition: width 1s linear, background 1s linear;
+  }
+
+  .timer-bar.warn { background: linear-gradient(90deg, var(--warn), var(--danger)); }
+
+  .timer-text {
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--muted);
+    text-align: center;
+    margin-bottom: 20px;
+  }
+
+  .timer-text span { color: var(--accent); font-weight: 700; }
+  .timer-text span.warn { color: var(--warn); }
+  .timer-text span.danger { color: var(--danger); }
+
+  /* ===================== ALERT ===================== */
+  .alert {
+    display: none;
+    padding: 12px 16px;
+    border-radius: 10px;
+    font-size: 13px;
+    font-family: var(--mono);
+    margin-bottom: 18px;
+    border-left: 3px solid;
+    animation: fadeUp 0.3s ease;
+  }
+
+  .alert.show { display: flex; align-items: flex-start; gap: 10px; }
+
+  .alert-error {
+    background: rgba(255,61,90,0.08);
+    border-color: var(--danger);
+    color: #ff6b82;
+  }
+
+  .alert-success {
+    background: rgba(0,255,148,0.08);
+    border-color: var(--accent2);
+    color: var(--accent2);
+  }
+
+  .alert-warn {
+    background: rgba(255,176,32,0.08);
+    border-color: var(--warn);
+    color: var(--warn);
+  }
+
+  /* ===================== SUCCESS SCREEN ===================== */
+  .success-icon {
+    width: 80px; height: 80px;
+    background: rgba(0,255,148,0.1);
+    border: 2px solid var(--accent2);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0 auto 24px;
+    font-size: 36px;
+    animation: popIn 0.5s cubic-bezier(0.175,0.885,0.32,1.275);
+    box-shadow: 0 0 40px rgba(0,255,148,0.2);
+  }
+
+  @keyframes popIn {
+    from { transform: scale(0); opacity: 0; }
+    to   { transform: scale(1); opacity: 1; }
+  }
+
+  .user-info {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 16px;
+    margin-bottom: 24px;
+  }
+
+  .user-info-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 6px 0;
+    font-size: 13px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .user-info-row:last-child { border-bottom: none; }
+
+  .user-info-key {
+    color: var(--muted);
+    font-family: var(--mono);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+
+  .user-info-val {
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 13px;
+  }
+
+  .badge {
+    display: inline-block;
+    padding: 2px 10px;
+    border-radius: 20px;
+    font-size: 11px;
+    font-weight: 600;
+    font-family: var(--mono);
+  }
+
+  .badge-green { background: rgba(0,255,148,0.15); color: var(--accent2); }
+  .badge-blue  { background: rgba(0,212,255,0.15); color: var(--accent);  }
+
+  /* ===================== REGISTER LINK ===================== */
+  .switch-link {
+    text-align: center;
+    margin-top: 20px;
+    font-size: 13px;
+    color: var(--muted);
+    font-family: var(--mono);
+  }
+
+  .switch-link a {
+    color: var(--accent);
+    text-decoration: none;
+    font-weight: 600;
+    cursor: pointer;
+  }
+
+  .switch-link a:hover { text-decoration: underline; }
+
+  /* ===================== DEMO PANEL ===================== */
+  .demo-panel {
+    margin-top: 16px;
+    background: var(--surface2);
+    border: 1px dashed var(--border);
+    border-radius: 12px;
+    padding: 14px 16px;
+  }
+
+  .demo-title {
+    font-size: 10px;
+    font-family: var(--mono);
+    color: var(--warn);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 8px;
+  }
+
+  .demo-code {
+    font-family: var(--mono);
+    font-size: 13px;
+    color: var(--text);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .demo-otp {
+    font-size: 22px;
+    font-weight: 700;
+    color: var(--accent2);
+    letter-spacing: 4px;
+  }
+
+  .copy-btn {
+    background: none;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 4px 10px;
+    color: var(--muted);
+    font-size: 11px;
+    cursor: pointer;
+    font-family: var(--mono);
+    transition: all 0.2s;
+  }
+
+  .copy-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+  /* ===================== PROGRESS ===================== */
+  .attempts-indicator {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+    margin-bottom: 16px;
+  }
+
+  .attempt-pip {
+    width: 10px; height: 10px;
+    border-radius: 50%;
+    background: var(--danger);
+    opacity: 0.2;
+    transition: opacity 0.3s;
+  }
+
+  .attempt-pip.used { opacity: 1; }
+
+  .attempts-label {
+    font-size: 11px;
+    font-family: var(--mono);
+    color: var(--muted);
+  }
+
+  /* Divider */
+  .divider {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin: 20px 0;
+    color: var(--muted);
+    font-size: 11px;
+    font-family: var(--mono);
+  }
+  .divider::before, .divider::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: var(--border);
+  }
+
+  /* Method selector */
+  .method-select {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 20px;
+  }
+
+  .method-btn {
+    flex: 1;
+    padding: 12px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    color: var(--muted);
+    font-family: var(--mono);
+    font-size: 12px;
+    cursor: pointer;
+    text-align: center;
+    transition: all 0.2s;
+  }
+
+  .method-btn.selected {
+    border-color: var(--accent);
+    color: var(--accent);
+    background: rgba(0,212,255,0.06);
+  }
+
+  .method-icon { font-size: 20px; display: block; margin-bottom: 4px; }
+
+  /* Security log */
+  .log-box {
+    background: #000;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 12px;
+    margin-top: 16px;
+    max-height: 140px;
+    overflow-y: auto;
+    font-family: var(--mono);
+    font-size: 11px;
+  }
+
+  .log-entry {
+    padding: 3px 0;
+    border-bottom: 1px solid #111;
+    display: flex;
+    gap: 8px;
+  }
+
+  .log-time { color: #333; min-width: 50px; }
+  .log-msg-ok { color: var(--accent2); }
+  .log-msg-warn { color: var(--warn); }
+  .log-msg-err { color: var(--danger); }
+
+  .log-box::-webkit-scrollbar { width: 4px; }
+  .log-box::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+  /* Footer */
+  .footer {
+    text-align: center;
+    margin-top: 24px;
+    font-size: 11px;
+    color: var(--muted);
+    font-family: var(--mono);
+  }
+</style>
 </head>
-<body class="bg-gray-100 flex items-center justify-center min-h-screen font-sans">
+<body>
 
-    <!-- Container wrapper -->
-    <div class="bg-white p-8 rounded-xl shadow-md w-full max-w-md">
-        
-        <!-- STEP 1: REGISTRATION & SIGN UP -->
-        <div id="step-signup" class="block">
-            <h2 class="text-2xl font-bold mb-2 text-gray-800">Create Account</h2>
-            <p class="text-sm text-gray-500 mb-6">Set up your local testing password credentials.</p>
-            <div class="space-y-4">
-                <input type="text" id="reg-username" placeholder="Username" class="w-full p-3 border rounded-lg focus:outline-blue-500">
-                <input type="password" id="reg-password" placeholder="Password" class="w-full p-3 border rounded-lg focus:outline-blue-500">
-                <button onclick="handleSignup()" class="w-full bg-green-600 text-white p-3 rounded-lg font-medium hover:bg-green-700 transition">Register & Setup 2FA</button>
-            </div>
-        </div>
+<div class="app">
+  <div class="logo">
+    <div class="logo-icon">🔐</div>
+    <h1>Secure<span>Auth</span></h1>
+    <p>// two-factor authentication system</p>
+  </div>
 
-        <!-- STEP 2: SCAN QR CODE SETUP -->
-        <div id="step-setup" class="hidden text-center">
-            <h2 class="text-2xl font-bold mb-2 text-gray-800">Secure Your Account</h2>
-            <p class="text-sm text-gray-600 mb-4">Scan this barcode using Google Authenticator or Authy.</p>
-            <div id="qrcode-container" class="flex justify-center my-4 p-4 bg-gray-50 rounded-lg inline-block mx-auto"></div>
-            <p class="text-xs text-gray-400 mb-4 font-mono">Secret: <span id="text-secret"></span></p>
-            <input type="text" id="setup-token" placeholder="000000" maxlength="6" class="w-full p-3 border text-center text-xl tracking-widest rounded-lg mb-4 focus:outline-blue-500">
-            <button onclick="handleVerifySetup()" class="w-full bg-blue-600 text-white p-3 rounded-lg font-medium hover:bg-blue-700 transition">Verify & Active 2FA</button>
-        </div>
-
-        <!-- STEP 3: USER LOGIN -->
-        <div id="step-login" class="hidden">
-            <h2 class="text-2xl font-bold mb-2 text-gray-800">Account Log In</h2>
-            <p class="text-sm text-gray-500 mb-6 font-medium text-amber-600">Simulating a fresh login challenge.</p>
-            <div class="space-y-4">
-                <input type="text" id="login-username" placeholder="Username" class="w-full p-3 border rounded-lg focus:outline-blue-500">
-                <input type="password" id="login-password" placeholder="Password" class="w-full p-3 border rounded-lg focus:outline-blue-500">
-                <button onclick="handleLogin()" class="w-full bg-blue-600 text-white p-3 rounded-lg font-medium hover:bg-blue-700 transition">Continue</button>
-            </div>
-        </div>
-
-        <!-- STEP 4: 2FA VERIFICATION PROMPT -->
-        <div id="step-challenge" class="hidden text-center">
-            <h2 class="text-2xl font-bold mb-2 text-gray-800">2-Factor Validation</h2>
-            <p class="text-sm text-gray-600 mb-6">Enter the current 6-digit rolling code from your smartphone app.</p>
-            <input type="text" id="challenge-token" placeholder="000000" maxlength="6" class="w-full p-3 border text-center text-2xl tracking-widest rounded-lg mb-4 focus:outline-blue-500">
-            <button onclick="handleVerifyChallenge()" class="w-full bg-blue-600 text-white p-3 rounded-lg font-medium hover:bg-blue-700 transition">Submit Token</button>
-        </div>
-
-        <!-- STEP 5: PROTECTED USER DASHBOARD -->
-        <div id="step-dashboard" class="hidden text-center">
-            <div class="w-16 h-16 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto mb-4 text-3xl">✓</div>
-            <h2 class="text-2xl font-bold text-gray-800 mb-1">Access Granted!</h2>
-            <p class="text-sm text-gray-500 mb-4">Welcome back, <span id="dash-username" class="font-bold text-gray-700"></span></p>
-            <span class="inline-block bg-green-100 text-green-800 text-xs px-3 py-1 rounded-full font-semibold mb-6">2FA Authenticated</span>
-            <button onclick="handleLogout()" class="w-full bg-gray-200 text-gray-700 p-3 rounded-lg font-medium hover:bg-gray-300 transition">Log Out Securely</button>
-        </div>
-
+  <div class="card">
+    <!-- Step indicator -->
+    <div class="step-indicator">
+      <div class="step-dot" id="dot1"></div>
+      <div class="step-dot" id="dot2"></div>
+      <div class="step-dot" id="dot3"></div>
     </div>
 
-    <!-- JavaScript Client Engine Logic -->
-    <script>
-        // Fake Local Storage Data Store Mockup 
-        let tempUserStore = null; 
-        let currentSecret = null;
+    <!-- ========== SCREEN 1: REGISTER ========== -->
+    <div class="screen" id="screen-register">
+      <div class="screen-title">Create Account</div>
+      <div class="screen-sub">Register to set up your 2FA-protected account</div>
 
-        // Visual view switcher function
-        function showStep(stepId) {
-            ['step-signup', 'step-setup', 'step-login', 'step-challenge', 'step-dashboard'].forEach(id => {
-                document.getElementById(id).style.display = (id === stepId) ? 'block' : 'none';
-            });
-        }
+      <div id="alert-reg" class="alert"></div>
 
-        // Action 1: Handle User Registration
-        function handleSignup() {
-            const user = document.getElementById('reg-username').value.trim();
-            const pass = document.getElementById('reg-password').value;
+      <div class="field">
+        <label>Full Name</label>
+        <input type="text" id="reg-name" placeholder="Moses D. Johnson" autocomplete="off"/>
+      </div>
+      <div class="field">
+        <label>Email Address</label>
+        <input type="email" id="reg-email" placeholder="moses@daystar.ac.ke" autocomplete="off"/>
+      </div>
+      <div class="field">
+        <label>Password</label>
+        <div class="password-wrap">
+          <input type="password" id="reg-pass" placeholder="Min. 8 characters"/>
+          <button class="toggle-pw" onclick="togglePw('reg-pass')">👁</button>
+        </div>
+      </div>
 
-            if(!user || !pass) return alert("Please fill in all layout field options.");
+      <div class="divider">2FA METHOD</div>
 
-            // Generate a secure Base32 random key utilizing OTPAuth Engine library natively
-            const secretObj = new OTPAuth.Secret({ size: 20 });
-            currentSecret = secretObj.base32;
+      <div class="method-select">
+        <div class="method-btn selected" id="method-email" onclick="selectMethod('email')">
+          <span class="method-icon">📧</span>Email OTP
+        </div>
+        <div class="method-btn" id="method-app" onclick="selectMethod('app')">
+          <span class="method-icon">📱</span>Auth App
+        </div>
+        <div class="method-btn" id="method-sms" onclick="selectMethod('sms')">
+          <span class="method-icon">💬</span>SMS OTP
+        </div>
+      </div>
 
-            tempUserStore = { username: user, password: pass, secret: currentSecret };
+      <button class="btn btn-primary" id="btn-register" onclick="doRegister()">
+        <span class="btn-text">Create Account & Enable 2FA →</span>
+      </button>
 
-            // Clear old QR code elements if any
-            document.getElementById('qrcode-container').innerHTML = "";
+      <div class="switch-link">Already have an account? <a onclick="goLogin()">Sign in</a></div>
+    </div>
 
-            // Create Authenticator standard dynamic setup link format string
-            const totpUri = new OTPAuth.TOTP({
-                issuer: 'GitHubStatic2FA',
-                label: user,
-                algorithm: 'SHA1',
-                digits: 6,
-                period: 30,
-                secret: secretObj
-            }).toString();
+    <!-- ========== SCREEN 2: LOGIN ========== -->
+    <div class="screen active" id="screen-login">
+      <div class="screen-title">Welcome back</div>
+      <div class="screen-sub">Enter your credentials to continue</div>
 
-            // Render visible UI layout fields and build custom verification image
-            document.getElementById('text-secret').innerText = currentSecret;
-            new QRCode(document.getElementById('qrcode-container'), {
-                text: totpUri,
-                width: 180,
-                height: 180
-            });
+      <div id="alert-login" class="alert"></div>
 
-            showStep('step-setup');
-        }
+      <div class="field">
+        <label>Email Address</label>
+        <input type="email" id="login-email" placeholder="moses@daystar.ac.ke" autocomplete="off"/>
+      </div>
+      <div class="field">
+        <label>Password</label>
+        <div class="password-wrap">
+          <input type="password" id="login-pass" placeholder="Your password"/>
+          <button class="toggle-pw" onclick="togglePw('login-pass')">👁</button>
+        </div>
+      </div>
 
-        // Action 2: Verify Initial Scanner Setup
-        function handleVerifySetup() {
-            const tokenInput = document.getElementById('setup-token').value.trim();
-            
-            let totp = new OTPAuth.TOTP({
-                secret: OTPAuth.Secret.fromBase32(currentSecret),
-                digits: 6,
-                period: 30
-            });
+      <button class="btn btn-primary" id="btn-login" onclick="doLogin()">
+        <span class="btn-text">Continue to Verification →</span>
+      </button>
 
-            // Validate code matches the active sliding timeframe
-            let delta = totp.validate({ token: tokenInput, window: 1 });
+      <div class="switch-link">No account? <a onclick="goRegister()">Register here</a></div>
+    </div>
 
-            if (delta !== null) {
-                alert("2FA configured successfully!");
-                showStep('step-login');
-            } else {
-                alert("Invalid verification code token. Please check your smartphone time settings.");
-            }
-        }
+    <!-- ========== SCREEN 3: OTP VERIFICATION ========== -->
+    <div class="screen" id="screen-otp">
+      <div class="screen-title">Verify Identity</div>
+      <div class="screen-sub" id="otp-sub">Enter the 6-digit code sent to your email</div>
 
-        // Action 3: Handle Regular Login Credential Validation
-        function handleLogin() {
-            const user = document.getElementById('login-username').value.trim();
-            const pass = document.getElementById('login-password').value;
+      <div id="alert-otp" class="alert"></div>
 
-            if (tempUserStore && tempUserStore.username === user && tempUserStore.password === pass) {
-                showStep('step-challenge');
-            } else {
-                alert("Invalid configuration credentials. Try again.");
-            }
-        }
+      <!-- Timer -->
+      <div class="timer-bar-wrap">
+        <div class="timer-bar" id="timer-bar"></div>
+      </div>
+      <div class="timer-text">Code expires in <span id="timer-count">5:00</span></div>
 
-        // Action 4: Verify 2FA Verification Login Token Request
-        function handleVerifyChallenge() {
-            const tokenInput = document.getElementById('challenge-token').value.trim();
+      <!-- Attempts -->
+      <div class="attempts-indicator">
+        <div class="attempt-pip" id="pip1"></div>
+        <div class="attempt-pip" id="pip2"></div>
+        <div class="attempt-pip" id="pip3"></div>
+        <span class="attempts-label" id="attempts-label">3 attempts remaining</span>
+      </div>
 
-            let totp = new OTPAuth.TOTP({
-                secret: OTPAuth.Secret.fromBase32(tempUserStore.secret),
-                digits: 6,
-                period: 30
-            });
+      <!-- OTP inputs -->
+      <div class="otp-grid">
+        <input class="otp-digit" id="otp0" maxlength="1" inputmode="numeric" type="text"/>
+        <input class="otp-digit" id="otp1" maxlength="1" inputmode="numeric" type="text"/>
+        <input class="otp-digit" id="otp2" maxlength="1" inputmode="numeric" type="text"/>
+        <input class="otp-digit" id="otp3" maxlength="1" inputmode="numeric" type="text"/>
+        <input class="otp-digit" id="otp4" maxlength="1" inputmode="numeric" type="text"/>
+        <input class="otp-digit" id="otp5" maxlength="1" inputmode="numeric" type="text"/>
+      </div>
 
-            let delta = totp.validate({ token: tokenInput, window: 1 });
+      <button class="btn btn-primary" id="btn-verify" onclick="verifyOTP()">
+        <span class="btn-text">Verify Code →</span>
+      </button>
+      <button class="btn btn-secondary" onclick="resendCode()">↻ Resend Code</button>
 
-            if (delta !== null) {
-                document.getElementById('dash-username').innerText = tempUserStore.username;
-                showStep('step-dashboard');
-            } else {
-                alert("Incorrect 2FA Security Token.");
-            }
-        }
+      <!-- Demo panel -->
+      <div class="demo-panel">
+        <div class="demo-title">⚠ Demo Mode — Generated OTP</div>
+        <div class="demo-code">
+          <span>Your code: <span class="demo-otp" id="demo-otp-display">------</span></span>
+          <button class="copy-btn" onclick="autoFillOTP()">Auto-fill</button>
+        </div>
+      </div>
 
-        // Action 5: Sign out reset
-        function handleLogout() {
-            document.getElementById('login-username').value = "";
-            document.getElementById('login-password').value = "";
-            document.getElementById('challenge-token').value = "";
-            document.getElementById('setup-token').value = "";
-            showStep('step-login');
-        }
-    </script>
+      <!-- Security log -->
+      <div class="log-box" id="sec-log"></div>
+    </div>
+
+    <!-- ========== SCREEN 4: SUCCESS ========== -->
+    <div class="screen" id="screen-success">
+      <div class="success-icon">✓</div>
+      <div class="screen-title" style="text-align:center">Authentication Successful</div>
+      <div class="screen-sub" style="text-align:center">Identity verified. 2FA passed. Session granted.</div>
+
+      <div class="user-info" id="user-info-panel"></div>
+
+      <div class="log-box" id="final-log"></div>
+
+      <button class="btn btn-primary" style="margin-top:20px" onclick="doLogout()">
+        <span class="btn-text">⎋ Sign Out</span>
+      </button>
+    </div>
+
+  </div><!-- /card -->
+
+  <div class="footer">
+    SecureAuth v1.0 — DICT123 Cybersecurity Project | Daystar University
+  </div>
+</div>
+
+<script>
+/* ============================================================
+   STATE
+   ============================================================ */
+const USERS_KEY = 'secureauth_users';
+const SESSION_KEY = 'secureauth_session';
+const OTP_EXPIRY = 300; // 5 minutes
+
+let state = {
+  currentUser: null,
+  currentOTP: null,
+  otpExpiry: null,
+  attempts: 3,
+  timerInterval: null,
+  selectedMethod: 'email',
+  secLog: []
+};
+
+/* ============================================================
+   STORAGE HELPERS
+   ============================================================ */
+function getUsers() {
+  try { return JSON.parse(localStorage.getItem(USERS_KEY)) || {}; }
+  catch { return {}; }
+}
+
+function saveUsers(u) {
+  localStorage.setItem(USERS_KEY, JSON.stringify(u));
+}
+
+function hashPw(pw) {
+  // Simple deterministic hash for demo (not bcrypt — illustrative)
+  let h = 0x9a7b4f3c;
+  for (let i = 0; i < pw.length; i++) {
+    h = Math.imul(h ^ pw.charCodeAt(i), 0x5bd1e995);
+    h ^= h >>> 15;
+  }
+  return (h >>> 0).toString(16).padStart(8,'0');
+}
+
+/* ============================================================
+   OTP GENERATOR
+   ============================================================ */
+function generateOTP() {
+  const digits = '0123456789';
+  let otp = '';
+  for (let i = 0; i < 6; i++) {
+    otp += digits[Math.floor(Math.random() * 10)];
+  }
+  return otp;
+}
+
+/* ============================================================
+   NAVIGATION
+   ============================================================ */
+function showScreen(name) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.getElementById('screen-' + name).classList.add('active');
+  updateDots(name);
+}
+
+function updateDots(name) {
+  const order = ['register','login','otp','success'];
+  const idx = order.indexOf(name);
+  ['dot1','dot2','dot3'].forEach((id, i) => {
+    const el = document.getElementById(id);
+    el.className = 'step-dot';
+    if (i < idx) el.classList.add('done');
+    else if (i === idx - 1) el.classList.add('active');
+  });
+  // Special cases
+  if (name === 'login')   { document.getElementById('dot1').classList.add('active'); }
+  if (name === 'otp')     { document.getElementById('dot1').classList.add('done'); document.getElementById('dot2').classList.add('active'); }
+  if (name === 'success') { document.getElementById('dot1').classList.add('done'); document.getElementById('dot2').classList.add('done'); document.getElementById('dot3').classList.add('active'); }
+}
+
+function goLogin()    { clearAlert('reg'); showScreen('login'); }
+function goRegister() { clearAlert('login'); showScreen('register'); }
+
+/* ============================================================
+   ALERTS
+   ============================================================ */
+function showAlert(zone, msg, type='error') {
+  const el = document.getElementById('alert-' + zone);
+  if (!el) return;
+  el.className = 'alert show alert-' + type;
+  el.innerHTML = (type === 'error' ? '🚫' : type === 'success' ? '✓' : '⚠') + ' ' + msg;
+}
+
+function clearAlert(zone) {
+  const el = document.getElementById('alert-' + zone);
+  if (el) { el.className = 'alert'; el.innerHTML = ''; }
+}
+
+/* ============================================================
+   SECURITY LOG
+   ============================================================ */
+function logEvent(msg, level='ok') {
+  const now = new Date();
+  const ts = now.toTimeString().slice(0,8);
+  state.secLog.push({ts, msg, level});
+  renderLog('sec-log');
+}
+
+function renderLog(id) {
+  const box = document.getElementById(id);
+  if (!box) return;
+  box.innerHTML = state.secLog.slice(-20).reverse().map(e =>
+    `<div class="log-entry"><span class="log-time">${e.ts}</span><span class="log-msg-${e.level}">[${e.level.toUpperCase()}] ${e.msg}</span></div>`
+  ).join('');
+}
+
+/* ============================================================
+   REGISTER
+   ============================================================ */
+function selectMethod(m) {
+  state.selectedMethod = m;
+  ['email','app','sms'].forEach(k => {
+    document.getElementById('method-' + k).classList.toggle('selected', k === m);
+  });
+}
+
+function doRegister() {
+  clearAlert('reg');
+  const name  = document.getElementById('reg-name').value.trim();
+  const email = document.getElementById('reg-email').value.trim().toLowerCase();
+  const pass  = document.getElementById('reg-pass').value;
+
+  // Validations
+  if (!name)  { showAlert('reg','Full name is required'); return mark('reg-name'); }
+  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
+    { showAlert('reg','Enter a valid email address'); return mark('reg-email'); }
+  if (pass.length < 8)
+    { showAlert('reg','Password must be at least 8 characters'); return mark('reg-pass'); }
+
+  const users = getUsers();
+  if (users[email]) {
+    showAlert('reg','An account with this email already exists'); return;
+  }
+
+  // Save user
+  users[email] = { name, email, passHash: hashPw(pass), method: state.selectedMethod, created: Date.now() };
+  saveUsers(users);
+
+  logEvent(`Account created: ${email}`, 'ok');
+  logEvent(`2FA method: ${state.selectedMethod.toUpperCase()}`, 'ok');
+  showAlert('reg', 'Account created! You can now sign in.', 'success');
+  setTimeout(() => { clearAlert('reg'); goLogin(); document.getElementById('login-email').value = email; }, 1500);
+}
+
+function mark(id) {
+  const el = document.getElementById(id);
+  if (el) { el.classList.add('error'); setTimeout(() => el.classList.remove('error'), 1000); }
+}
+
+/* ============================================================
+   LOGIN
+   ============================================================ */
+function doLogin() {
+  clearAlert('login');
+  const email = document.getElementById('login-email').value.trim().toLowerCase();
+  const pass  = document.getElementById('login-pass').value;
+
+  if (!email) { showAlert('login','Enter your email'); return mark('login-email'); }
+  if (!pass)  { showAlert('login','Enter your password'); return mark('login-pass'); }
+
+  const users = getUsers();
+  const user  = users[email];
+
+  // Simulate network delay
+  setLoading('btn-login', true);
+  setTimeout(() => {
+    setLoading('btn-login', false);
+    if (!user || user.passHash !== hashPw(pass)) {
+      logEvent(`Failed login attempt: ${email}`, 'err');
+      showAlert('login','Invalid email or password');
+      mark('login-email'); mark('login-pass');
+      return;
+    }
+
+    state.currentUser = user;
+    state.attempts = 3;
+    logEvent(`Credentials verified: ${email}`, 'ok');
+    logEvent(`Initiating 2FA via ${user.method.toUpperCase()}`, 'warn');
+
+    // Generate OTP
+    state.currentOTP = generateOTP();
+    state.otpExpiry = Date.now() + OTP_EXPIRY * 1000;
+    document.getElementById('demo-otp-display').textContent = state.currentOTP;
+
+    // Update sub text
+    const sub = document.getElementById('otp-sub');
+    sub.textContent = {
+      email: `A 6-digit code has been sent to ${email}`,
+      app:   'Open your Authenticator App and enter the code',
+      sms:   `A code was sent via SMS to your registered number`
+    }[user.method] || 'Enter the 6-digit verification code';
+
+    resetAttempts();
+    showScreen('otp');
+    startTimer();
+    document.getElementById('otp0').focus();
+  }, 800);
+}
+
+/* ============================================================
+   OTP / TIMER
+   ============================================================ */
+function startTimer() {
+  if (state.timerInterval) clearInterval(state.timerInterval);
+  updateTimerUI();
+  state.timerInterval = setInterval(() => {
+    updateTimerUI();
+    if (Date.now() >= state.otpExpiry) {
+      clearInterval(state.timerInterval);
+      lockOTP('Code expired. Please request a new one.');
+    }
+  }, 1000);
+}
+
+function updateTimerUI() {
+  const remaining = Math.max(0, Math.floor((state.otpExpiry - Date.now()) / 1000));
+  const pct = (remaining / OTP_EXPIRY) * 100;
+  const bar = document.getElementById('timer-bar');
+  const cnt = document.getElementById('timer-count');
+
+  bar.style.width = pct + '%';
+  bar.className = 'timer-bar' + (remaining < 60 ? ' warn' : '');
+
+  const m = Math.floor(remaining / 60);
+  const s = remaining % 60;
+  cnt.textContent = `${m}:${s.toString().padStart(2,'0')}`;
+  cnt.className = remaining < 30 ? 'danger' : remaining < 60 ? 'warn' : '';
+}
+
+function resetAttempts() {
+  state.attempts = 3;
+  for (let i = 1; i <= 3; i++) {
+    document.getElementById('pip'+i).classList.remove('used');
+  }
+  document.getElementById('attempts-label').textContent = '3 attempts remaining';
+}
+
+function useAttempt() {
+  const idx = 4 - state.attempts; // 1,2,3
+  state.attempts--;
+  const pip = document.getElementById('pip' + idx);
+  if (pip) pip.classList.add('used');
+  const label = document.getElementById('attempts-label');
+  label.textContent = state.attempts + ' attempt' + (state.attempts === 1 ? '' : 's') + ' remaining';
+}
+
+function lockOTP(msg) {
+  showAlert('otp', msg, 'warn');
+  document.querySelectorAll('.otp-digit').forEach(i => i.disabled = true);
+  document.getElementById('btn-verify').disabled = true;
+  logEvent('OTP session locked: ' + msg, 'warn');
+}
+
+function resendCode() {
+  clearAlert('otp');
+  state.currentOTP = generateOTP();
+  state.otpExpiry = Date.now() + OTP_EXPIRY * 1000;
+  document.getElementById('demo-otp-display').textContent = state.currentOTP;
+  document.querySelectorAll('.otp-digit').forEach(i => { i.value = ''; i.disabled = false; i.classList.remove('filled','error-otp'); });
+  document.getElementById('btn-verify').disabled = false;
+  resetAttempts();
+  startTimer();
+  document.getElementById('otp0').focus();
+  logEvent('OTP resent (new code generated)', 'warn');
+  showAlert('otp', 'A new code has been generated.', 'success');
+}
+
+function autoFillOTP() {
+  const digits = state.currentOTP.split('');
+  digits.forEach((d, i) => {
+    const el = document.getElementById('otp' + i);
+    el.value = d;
+    el.classList.add('filled');
+  });
+  logEvent('OTP auto-filled (demo mode)', 'warn');
+}
+
+function verifyOTP() {
+  clearAlert('otp');
+  const entered = [0,1,2,3,4,5].map(i => document.getElementById('otp'+i).value).join('');
+
+  if (entered.length < 6) {
+    showAlert('otp', 'Please enter all 6 digits');
+    return;
+  }
+
+  if (Date.now() >= state.otpExpiry) {
+    lockOTP('Code has expired. Click Resend.');
+    return;
+  }
+
+  setLoading('btn-verify', true);
+  setTimeout(() => {
+    setLoading('btn-verify', false);
+    if (entered === state.currentOTP) {
+      clearInterval(state.timerInterval);
+      logEvent('OTP verified successfully ✓', 'ok');
+      logEvent(`Session granted for ${state.currentUser.email}`, 'ok');
+      showSuccess();
+    } else {
+      useAttempt();
+      logEvent(`Incorrect OTP entered (${state.attempts} left)`, 'err');
+      document.querySelectorAll('.otp-digit').forEach(i => i.classList.add('error-otp'));
+      setTimeout(() => document.querySelectorAll('.otp-digit').forEach(i => i.classList.remove('error-otp')), 600);
+
+      if (state.attempts <= 0) {
+        lockOTP('Too many failed attempts. Account temporarily locked.');
+        return;
+      }
+      showAlert('otp', `Incorrect code. ${state.attempts} attempt${state.attempts === 1 ? '' : 's'} remaining.`);
+      document.querySelectorAll('.otp-digit').forEach(i => i.value = '');
+      document.getElementById('otp0').focus();
+    }
+  }, 400);
+}
+
+/* ============================================================
+   SUCCESS
+   ============================================================ */
+function showSuccess() {
+  const u = state.currentUser;
+  const panel = document.getElementById('user-info-panel');
+  panel.innerHTML = `
+    <div class="user-info-row">
+      <span class="user-info-key">Name</span>
+      <span class="user-info-val">${u.name}</span>
+    </div>
+    <div class="user-info-row">
+      <span class="user-info-key">Email</span>
+      <span class="user-info-val">${u.email}</span>
+    </div>
+    <div class="user-info-row">
+      <span class="user-info-key">2FA Method</span>
+      <span class="user-info-val"><span class="badge badge-blue">${u.method.toUpperCase()}</span></span>
+    </div>
+    <div class="user-info-row">
+      <span class="user-info-key">Status</span>
+      <span class="user-info-val"><span class="badge badge-green">✓ AUTHENTICATED</span></span>
+    </div>
+    <div class="user-info-row">
+      <span class="user-info-key">Session</span>
+      <span class="user-info-val">${new Date().toLocaleString()}</span>
+    </div>
+  `;
+
+  // Copy log to final log
+  setTimeout(() => {
+    renderLog('final-log');
+  }, 100);
+
+  showScreen('success');
+}
+
+function doLogout() {
+  logEvent(`User logged out: ${state.currentUser?.email}`, 'ok');
+  state.currentUser = null;
+  state.currentOTP = null;
+  clearInterval(state.timerInterval);
+  document.getElementById('login-email').value = '';
+  document.getElementById('login-pass').value = '';
+  clearAlert('login');
+  showScreen('login');
+}
+
+/* ============================================================
+   OTP INPUT NAVIGATION
+   ============================================================ */
+document.querySelectorAll('.otp-digit').forEach((input, idx) => {
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Backspace') {
+      if (!input.value && idx > 0) {
+        document.getElementById('otp' + (idx - 1)).focus();
+      }
+      input.classList.remove('filled');
+    }
+  });
+
+  input.addEventListener('input', (e) => {
+    const val = e.target.value.replace(/\D/g, '');
+    input.value = val.slice(-1);
+    if (val) {
+      input.classList.add('filled');
+      if (idx < 5) document.getElementById('otp' + (idx + 1)).focus();
+      else verifyOTP();
+    } else {
+      input.classList.remove('filled');
+    }
+  });
+
+  input.addEventListener('paste', (e) => {
+    e.preventDefault();
+    const paste = e.clipboardData.getData('text').replace(/\D/g,'').slice(0,6);
+    paste.split('').forEach((d,i) => {
+      const el = document.getElementById('otp'+i);
+      if (el) { el.value = d; el.classList.add('filled'); }
+    });
+    if (paste.length === 6) verifyOTP();
+  });
+});
+
+/* ============================================================
+   HELPERS
+   ============================================================ */
+function togglePw(id) {
+  const el = document.getElementById(id);
+  el.type = el.type === 'password' ? 'text' : 'password';
+}
+
+function setLoading(btnId, loading) {
+  const btn = document.getElementById(btnId);
+  if (loading) btn.classList.add('loading');
+  else btn.classList.remove('loading');
+  btn.disabled = loading;
+}
+
+// Enter key support
+document.getElementById('login-pass').addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
+document.getElementById('reg-pass').addEventListener('keydown',   e => { if (e.key === 'Enter') doRegister(); });
+
+/* Init */
+updateDots('login');
+</script>
 </body>
 </html>
